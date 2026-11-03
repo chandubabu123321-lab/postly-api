@@ -22,10 +22,16 @@ class YouTubePublisher(BasePublisher):
     platform = "youtube"
 
     async def publish(self, access_token: str, media_url: str, caption: str, extra: dict) -> PublishResult:
-        title       = extra.get("title", caption[:100])
-        description = extra.get("description", caption)
-        privacy     = extra.get("privacy", "public")   # public | unlisted | private
-        tags        = extra.get("tags", [])
+        # The worker always sets these keys, possibly to None, so fall back with `or`.
+        title       = extra.get("title") or caption[:100] or "Untitled"
+        description = extra.get("description") or caption
+        privacy     = extra.get("privacy") or "public"   # public | unlisted | private
+        tags        = extra.get("tags") or []
+
+        # YouTube has no Shorts upload flag: it decides from the video being
+        # vertical and at most 3 minutes. The tag is only a helpful signal.
+        if extra.get("post_type") == "short" and "#shorts" not in f"{title} {description}".lower():
+            description = f"{description}\n\n#Shorts"
 
         if not media_url or not any(media_url.lower().endswith(ext) for ext in [".mp4", ".mov", ".avi", ".mkv"]):
             return PublishResult(success=False, error="YouTube requires a video file.")

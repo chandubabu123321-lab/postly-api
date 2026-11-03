@@ -3,6 +3,16 @@ from typing import Optional, List
 from datetime import datetime
 
 
+# What each platform can publish through Postly.
+POST_TYPES = {
+    "instagram": {"post", "reel", "story"},
+    "facebook":  {"post", "reel", "story"},
+    "youtube":   {"post", "short"},
+    "linkedin":  {"post"},
+    "x":         {"post"},
+}
+
+
 class PostTargetCreate(BaseModel):
     platform: str
     account_id: Optional[str] = None
@@ -10,7 +20,9 @@ class PostTargetCreate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     privacy: str = "public"
-    hashtags: Optional[str] = None
+    hashtags: Optional[List[str]] = None
+    post_type: str = "post"   # see POST_TYPES
+    media_asset_id: Optional[str] = None   # this platform's own file, e.g. a 9:16 crop for a Reel
 
 
 class PostDraftCreate(BaseModel):
@@ -18,6 +30,7 @@ class PostDraftCreate(BaseModel):
     master_caption: Optional[str] = None
     media_asset_id: Optional[str] = None
     targets: List[PostTargetCreate] = []
+    scheduled_at: Optional[datetime] = None   # set to schedule the post in the same request
 
 
 class PostDraftUpdate(BaseModel):
@@ -62,6 +75,10 @@ class PostDraftResponse(BaseModel):
     post_targets: List[PostTargetResponse] = []
 
     model_config = {"from_attributes": True}
+
+
+class ScheduleRequest(BaseModel):
+    scheduled_at: datetime
 
 
 class PublishRequest(BaseModel):

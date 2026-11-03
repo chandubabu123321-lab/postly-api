@@ -34,12 +34,16 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No account found with this email.")
     if not verify_password(body.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect email or password.")
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="This account is disabled. Ask your super admin.")
     return TokenResponse(access_token=create_access_token(user.id), token_type="bearer")
 
 
 @router.get("/me", response_model=UserResponse)
 def me(user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+    from services.accounts import can_manage_accounts
     user = db.query(User).get(user_id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found.")
-    return UserResponse(id=user.id, email=user.email, name=user.name)
+    return UserResponse(id=user.id, email=user.email, name=user.name, role=user.role or "user",
+                        can_manage_accounts=can_manage_accounts(user))

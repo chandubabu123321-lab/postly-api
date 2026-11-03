@@ -1,7 +1,21 @@
+# Python
 venv/
+.venv/
+.venv*/
 __pycache__/
 *.pyc
 *.pyo
-postly.db
-uploads/
+
+# Secrets: never commit these
 .env
+.env.*
+!.env.example
+
+# Database and its backups
+*.db
+*.db-shm
+*.db-wal
+*.db.bak*
+
+# User uploads and generated videos
+uploads/

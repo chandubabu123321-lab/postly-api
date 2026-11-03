@@ -53,4 +53,15 @@ def get_current_user_id(credentials: HTTPAuthorizationCredentials = Depends(bear
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+    # A disabled user's token stops working at once, not when it expires.
+    from database import SessionLocal
+    from models.user import User
+    db = SessionLocal()
+    try:
+        user = db.get(User, user_id)
+        if not user or not user.is_active:
+            raise HTTPException(status_code=401, detail="This account is disabled.")
+    finally:
+        db.close()
     return user_id

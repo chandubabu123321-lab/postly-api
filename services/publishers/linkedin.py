@@ -10,6 +10,7 @@ Text-only: skip steps 1-2.
 
 Docs: https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api
 """
+import asyncio
 import httpx
 import logging
 from services.publishers.base import BasePublisher, PublishResult
@@ -17,9 +18,13 @@ from services.rate_limiter import respectful_delay, parse_rate_limit_headers
 
 logger = logging.getLogger(__name__)
 
-API = "https://api.linkedin.com/rest"
+# The assets/ugcPosts calls below are the unversioned v2 API that the
+# "Share on LinkedIn" product documents. The versioned /rest API needs a
+# LinkedIn-Version header that LinkedIn retires after about a year.
+API = "https://api.linkedin.com/v2"
+VIDEO_POLLS        = 40   # about 4 minutes of waiting for video processing
+VIDEO_POLL_SECONDS = 6
 HEADERS = {
-    "LinkedIn-Version": "202411",
     "Content-Type": "application/json",
     "X-Restli-Protocol-Version": "2.0.0",
 }
@@ -37,12 +42,13 @@ class LinkedInPublisher(BasePublisher):
 
         auth_headers = {**HEADERS, "Authorization": f"Bearer {access_token}"}
 
-        async with httpx.AsyncClient(timeout=60) as client:
+        is_video = any(media_url.lower().endswith(ext) for ext in [".mp4", ".mov"])
+
+        async with httpx.AsyncClient(timeout=300) as client:
             media_urn = None
 
             if media_url:
                 # Step 1 — register upload
-                is_video = any(media_url.lower().endswith(ext) for ext in [".mp4", ".mov"])
                 recipe   = "urn:li:digitalmediaRecipe:feedshare-video" if is_video else "urn:li:digitalmediaRecipe:feedshare-image"
 
                 reg_r = await client.post(f"{API}/assets?action=registerUpload", headers=auth_headers, json={
@@ -63,8 +69,26 @@ class LinkedInPublisher(BasePublisher):
 
                 # Step 2 — download media and PUT to LinkedIn
                 media_r  = await client.get(media_url)
-                await client.put(upload_url, content=media_r.content,
-                                 headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/octet-stream"})
+                if media_r.status_code != 200:
+                    return PublishResult(success=False, error=f"Could not download media for LinkedIn: {media_url}")
+                put_r = await client.put(upload_url, content=media_r.content,
+                                         headers={"Authorization": f"Bearer {access_token}", "Content-Type": "application/octet-stream"})
+                if put_r.status_code not in (200, 201):
+                    return PublishResult(success=False, error=f"LinkedIn media upload failed: {put_r.status_code} {put_r.text}")
+
+                # A video must finish processing before a post can use it.
+                if is_video:
+                    asset_id = media_urn.rsplit(":", 1)[-1]
+                    for _ in range(VIDEO_POLLS):
+                        await asyncio.sleep(VIDEO_POLL_SECONDS)
+                        st = await client.get(f"{API}/assets/{asset_id}", headers=auth_headers)
+                        states = [r.get("status") for r in st.json().get("recipes", [])] if st.status_code == 200 else []
+                        if "AVAILABLE" in states:
+                            break
+                        if "PROCESSING_FAILED" in states:
+                            return PublishResult(success=False, error="LinkedIn could not process this video.")
+                    else:
+                        return PublishResult(success=False, error="LinkedIn is still processing the video. Retry in a few minutes.")
 
             # Step 3 — create post
             post_body: dict = {
@@ -73,7 +97,7 @@ class LinkedInPublisher(BasePublisher):
                 "specificContent": {
                     "com.linkedin.ugc.ShareContent": {
                         "shareCommentary": {"text": caption},
-                        "shareMediaCategory": "NONE" if not media_urn else ("VIDEO" if "video" in (media_urn or "") else "IMAGE"),
+                        "shareMediaCategory": "NONE" if not media_urn else ("VIDEO" if is_video else "IMAGE"),
                     }
                 },
                 "visibility": {"com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC"},

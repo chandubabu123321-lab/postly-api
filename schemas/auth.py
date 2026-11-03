@@ -21,5 +21,7 @@ class UserResponse(BaseModel):
     id: str
     name: str
     email: str
+    role: str = "user"                # super_admin | user
+    can_manage_accounts: bool = True  # false for team users, who post through the admin's accounts
 
     model_config = {"from_attributes": True}

@@ -6,6 +6,7 @@ from models.publish_job import PublishJob
 from models.post_target import PostTarget
 from models.post_draft import PostDraft
 from services.security import get_current_user_id
+from services.accounts import visible_user_ids
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/jobs", tags=["jobs"])
 @router.get("/{job_id}")
 def get_job(job_id: str, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
     job = db.query(PublishJob).get(job_id)
-    if not job:
+    if not job or job.post_target.post_draft.user_id not in visible_user_ids(db, user_id):
         raise HTTPException(status_code=404, detail="Job not found.")
     return {
         "id":              job.id,
@@ -29,7 +30,7 @@ def get_job(job_id: str, user_id: str = Depends(get_current_user_id), db: Sessio
 
 @router.get("/draft/{draft_id}")
 def jobs_for_draft(draft_id: str, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
-    draft = db.query(PostDraft).filter(PostDraft.id == draft_id, PostDraft.user_id == user_id).first()
+    draft = db.query(PostDraft).filter(PostDraft.id == draft_id, PostDraft.user_id.in_(visible_user_ids(db, user_id))).first()
     if not draft:
         raise HTTPException(status_code=404, detail="Draft not found.")
     result = []
@@ -38,6 +39,7 @@ def jobs_for_draft(draft_id: str, user_id: str = Depends(get_current_user_id), d
         job  = jobs[0] if jobs else None
         result.append({
             "platform":     target.platform,
+            "post_type":    target.post_type or "post",
             "target_id":    target.id,
             "target_status": target.status,
             "job_id":       job.id if job else None,
@@ -50,22 +52,17 @@ def jobs_for_draft(draft_id: str, user_id: str = Depends(get_current_user_id), d
 
 @router.post("/retry/{job_id}")
 async def retry_job(job_id: str, user_id: str = Depends(get_current_user_id), db: Session = Depends(get_db)):
+    from workers.tasks import reset_job, run_target_sync
+
     job = db.query(PublishJob).get(job_id)
-    if not job:
+    if not job or job.post_target.post_draft.user_id not in visible_user_ids(db, user_id):
         raise HTTPException(status_code=404, detail="Job not found.")
-    if job.job_status not in ("failed",):
+    # "retrying" is where a failed attempt rests: nothing retries it automatically.
+    if job.job_status not in ("failed", "retrying"):
         raise HTTPException(status_code=409, detail="Only failed jobs can be retried.")
 
-    job.job_status = "queued"
-    job.attempts   = 0
-    job.last_error = None
-    db.commit()
+    reset_job(job, db)
+    await run_target_sync(job.post_target_id, user_id, db)
 
-    try:
-        from workers.tasks import publish_target_task
-        publish_target_task.delay(job.post_target_id, user_id)
-    except Exception:
-        from workers.tasks import run_target_sync
-        await run_target_sync(job.post_target_id, user_id, db)
-
-    return {"status": "queued", "job_id": job_id}
+    db.refresh(job)
+    return {"status": job.job_status, "job_id": job_id, "last_error": job.last_error}

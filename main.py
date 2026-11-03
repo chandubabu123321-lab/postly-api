@@ -1,4 +1,5 @@
 """Postly API — FastAPI entry point."""
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -19,7 +20,10 @@ async def lifespan(app: FastAPI):
     logger.info("Database tables ready.")
     os.makedirs(get_settings().UPLOAD_DIR, exist_ok=True)
     logger.info("Upload directory: %s", get_settings().UPLOAD_DIR)
+    from services.scheduler import scheduler_loop
+    scheduler = asyncio.create_task(scheduler_loop())
     yield
+    scheduler.cancel()
     logger.info("Postly API shutting down.")
 
 
@@ -37,7 +41,14 @@ app = FastAPI(
 # CORS — allow frontend dev server
 app.add_middleware(
     CORSMiddleware,
-    allow_origins     = ["http://localhost:5199", "http://localhost:5173", settings.FRONTEND_URL],
+    allow_origins     = [
+        "http://localhost:5199",
+        "http://localhost:5200",
+        "http://localhost:5201",
+        "http://localhost:5202",
+        "http://localhost:5173",
+        settings.FRONTEND_URL,
+    ],
     allow_credentials = True,
     allow_methods     = ["*"],
     allow_headers     = ["*"],
@@ -52,7 +63,11 @@ from routers.media import router as media_router
 from routers.posts import router as posts_router
 from routers.oauth import router as oauth_router
 from routers.jobs  import router as jobs_router
+from routers.ai    import router as ai_router
+from routers.admin import router as admin_router
 
+app.include_router(ai_router)
+app.include_router(admin_router)
 app.include_router(auth_router)
 app.include_router(media_router)
 app.include_router(posts_router)

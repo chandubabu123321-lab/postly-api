@@ -9,6 +9,11 @@ class Settings(BaseSettings):
     DEBUG: bool = True
     APP_BASE_URL: str = "http://localhost:8000"
     API_BASE_URL: str = "http://localhost:8000"   # used in OAuth callback URLs
+    # Instagram Login only accepts https redirect URIs, so it may need a
+    # tunnel URL while the other platforms keep using http://localhost.
+    INSTAGRAM_REDIRECT_BASE_URL: str = ""
+    # X's developer portal rejects "localhost" callbacks but accepts 127.0.0.1.
+    X_REDIRECT_BASE_URL: str = ""
     FRONTEND_URL: str = "http://localhost:5199"
 
     # Database — SQLite by default, swap one line for Turso/Supabase later
@@ -45,6 +50,13 @@ class Settings(BaseSettings):
     FACEBOOK_APP_ID: str = ""       # alias — set same value as META_APP_ID
     FACEBOOK_APP_SECRET: str = ""   # alias — set same value as META_APP_SECRET
 
+    # Instagram Login (Instagram API with Instagram Login) — these are the
+    # "Instagram app ID / secret" from the Instagram product inside the Meta
+    # app, NOT the Facebook app ID. They let users authorise on instagram.com
+    # instead of being sent to facebook.com.
+    INSTAGRAM_APP_ID: str = ""
+    INSTAGRAM_APP_SECRET: str = ""
+
     # LinkedIn
     LINKEDIN_CLIENT_ID: str = ""
     LINKEDIN_CLIENT_SECRET: str = ""
@@ -59,6 +71,11 @@ class Settings(BaseSettings):
     X_CLIENT_ID: str = ""
     X_CLIENT_SECRET: str = ""
     X_REDIRECT_URI: str = "http://localhost:8000/api/oauth/x/callback"
+
+    # AI captions, tried in this order
+    GROQ_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
+    OPENROUTER_API_KEY: str = ""
 
     class Config:
         env_file = ".env"

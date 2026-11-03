@@ -16,6 +16,8 @@ class PostTarget(Base):
     title          = Column(String, nullable=True)     # YouTube only
     description    = Column(Text, nullable=True)       # YouTube only
     privacy        = Column(String, default="public")  # public | unlisted | private
+    post_type      = Column(String, default="post")    # post | reel | story | short
+    media_asset_id = Column(String, ForeignKey("media_assets.id"), nullable=True)  # own file, else the post's
     hashtags       = Column(String, nullable=True)
     status         = Column(String, default="pending") # pending | publishing | published | failed
     created_at     = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -23,3 +25,4 @@ class PostTarget(Base):
 
     post_draft   = relationship("PostDraft",   back_populates="post_targets")
     publish_jobs = relationship("PublishJob",  back_populates="post_target", cascade="all, delete-orphan")
+    media_asset  = relationship("MediaAsset")

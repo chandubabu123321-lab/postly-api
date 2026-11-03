@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import uuid
@@ -13,6 +13,8 @@ class User(Base):
     name          = Column(String, nullable=False)
     password_hash = Column(String, nullable=False)
     is_active     = Column(Boolean, default=True)
+    role          = Column(String, default="user")                          # super_admin | user
+    owner_id      = Column(String, ForeignKey("users.id"), nullable=True)   # the super admin who created this user
     created_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at    = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
